@@ -6,6 +6,7 @@ import (
 	_ "image/jpeg"
 	"os"
 	"strconv"
+	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -16,68 +17,91 @@ func main() {
     fmt.Println("The string parameter must be a number")
     panic(err)
   }
-  //characters := []rune("$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'.")
-  characters := []rune("Ñ@#W$9876543210?!abc;:+=-,._") 
+
+  //Note: removed spanish Ñ
+  characters := []rune("@#W$9876543210?!abc;:+=-,._") 
+
+  // Open our input file
   reader, err := os.Open(in)
   if err != nil {
     fmt.Println("Error reading your file, did you do it correctly?")
     panic(err)
   }
 
+  // Decode jpg to Image
   img, _, err := image.Decode(reader)
   if err != nil {
     fmt.Println("Error reading the image, did you fuck it up?")
     panic(err)
   }
 
+  // Compute brightness matrix
   brightness := brightnessMatrix(img)
-  whR := float32(len(brightness[0]))/float32(len(brightness))
-  averagedBlocks := blockedMatrix(brightness, width, whR)
 
-  output := ""
+  // Calculate the width-height ratio of our image
+  whR := float64(len(brightness[0]))/float64(len(brightness))
+
+  cwhR := float64(1)
+  if f, err := os.OpenFile("/dev/tty", unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NDELAY|unix.O_RDWR, 0666); err == nil {
+    var sz *unix.Winsize
+    if sz, err = unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ); err == nil {
+      // The cell width height ratio 
+      cwhR = float64(sz.Xpixel)/float64(sz.Ypixel)
+    }
+  }
+
+  // The total width height ratio
+  twhR := whR / cwhR
+
+  // Average the cells in blocks (specified in "width" by the user)
+  averagedBlocks := blockedMatrix(brightness, width, twhR)
+
+  file, err := os.Create(out)
+  defer file.Close()
+  if err != nil {
+    fmt.Println("Error opening file")
+    panic(err)
+  }
   for y, row := range averagedBlocks{
     prevChar := rune(0)
     count := 0
     for x := range len(row){
-      charIndex := float32(averagedBlocks[y][x])/255.0*float32(len(characters)-1)
+      charIndex := float64(averagedBlocks[y][x])/255.0*float64(len(characters)-1)
       invCharIndex := len(characters) - 1 - int(charIndex)
       
       curChar := characters[invCharIndex]
       if prevChar != curChar || x == len(row)-1 {
         // Different character (we add our brainfuck code)
-        output = addBFChars(output, prevChar, count)
+        addBFChars(prevChar, count, file)
         prevChar = curChar
         count = 0
       }
       count++
     }
-    output = addBFNewLine(output)
-  }
-  err = os.WriteFile(out, []byte(output), 0644)
-  if err != nil {
-    fmt.Println("Error writing brainfuck to file")
-    panic(err)
+    addBFNewLine(file)
   }
 }
 
-func addBFChars(input string, char rune, count int) string{
+func addBFChars(char rune, count int, file *os.File){
   ascii := int(char)
+  addition := ""
   for _ = range ascii{
-    input += "+"
+    addition += "+"
   } 
   for _ = range count{
-    input += "."
+    addition += "."
   }
-  input += ">"
-  return input
+  addition +=">\n"
+  file.Write([]byte(addition))
 }
 
-func addBFNewLine(input string) string {
+func addBFNewLine(file *os.File){
+  addition := ""
   for _ = range 10 {
-    input += "+"
+    addition += "+"
   }
-  input += ".>"
-  return input
+  addition += ".>\n"
+  file.Write([]byte(addition))
 }
 
 func brightnessMatrix(img image.Image) [][]int {
@@ -96,10 +120,10 @@ func brightnessMatrix(img image.Image) [][]int {
   return matrix
 }
 
-func blockedMatrix(matrix [][]int, blocksAmountW int, whR float32) [][]int {
-  blockWidth := int(len(matrix[0]) / blocksAmountW)
-  blockHeight := int(float32(blockWidth)*whR)
-  blocksAmountH := len(matrix)/blockHeight
+func blockedMatrix(matrix [][]int, blocksAmountW int, whR float64) [][]int {
+  blockWidth := len(matrix[0]) / blocksAmountW
+  blocksAmountH := int(float64(blocksAmountW)*whR)
+  blockHeight := len(matrix)/blocksAmountH
 
   blockedMatrix := make([][]int, blocksAmountH)
   for i := range len(blockedMatrix) {
