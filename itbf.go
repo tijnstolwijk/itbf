@@ -19,7 +19,7 @@ func main() {
   }
 
   //Note: removed spanish Ñ
-  characters := []rune("@#W$9876543210?!abc;:+=-,._") 
+  characters := []rune("@#W$9876543210?!abc;:+=-,._   ") 
 
   // Open our input file
   reader, err := os.Open(in)
@@ -51,7 +51,7 @@ func main() {
   }
 
   // The total width height ratio
-  twhR := whR / cwhR
+  twhR := whR * cwhR
 
   // Average the cells in blocks (specified in "width" by the user)
   averagedBlocks := blockedMatrix(brightness, width, twhR)
@@ -122,9 +122,11 @@ func brightnessMatrix(img image.Image) [][]int {
 
 func blockedMatrix(matrix [][]int, blocksAmountW int, whR float64) [][]int {
   blockWidth := len(matrix[0]) / blocksAmountW
-  blocksAmountH := int(float64(blocksAmountW)*whR)
+  blocksAmountH := int(float64(blocksAmountW)/whR)
   blockHeight := len(matrix)/blocksAmountH
 
+  fmt.Printf("blockWidth: %d, blocksAmountW: %d, width: %d\n", blockWidth, blocksAmountW, len(matrix[0]))
+  fmt.Printf("blockHeight: %d, blocksAmountH: %d, height: %d\n", blockHeight, blocksAmountH, len(matrix))
   blockedMatrix := make([][]int, blocksAmountH)
   for i := range len(blockedMatrix) {
     blockedMatrix[i] = make([]int, blocksAmountW)
