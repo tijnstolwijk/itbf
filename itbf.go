@@ -6,6 +6,7 @@ import (
 	_ "image/jpeg"
 	"os"
 	"strconv"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -123,7 +124,8 @@ func brightnessMatrix(img image.Image) [][]int {
 func blockedMatrix(matrix [][]int, blocksAmountW int, whR float64) [][]int {
   blockWidth := len(matrix[0]) / blocksAmountW
   blocksAmountH := int(float64(blocksAmountW)/whR)
-  blockHeight := len(matrix)/blocksAmountH
+  blockHeight := len(matrix)/blocksAmountH // first look at the blockheight for a strict emulation of the given aspect ratio
+  blocksAmountH = len(matrix)/blockHeight // this will hopefully give us a balance between strict aspect ratio and losslessness
 
   fmt.Printf("blockWidth: %d, blocksAmountW: %d, width: %d\n", blockWidth, blocksAmountW, len(matrix[0]))
   fmt.Printf("blockHeight: %d, blocksAmountH: %d, height: %d\n", blockHeight, blocksAmountH, len(matrix))
