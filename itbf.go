@@ -6,7 +6,6 @@ import (
 	_ "image/jpeg"
 	"os"
 	"strconv"
-
 	"golang.org/x/sys/unix"
 )
 
@@ -40,7 +39,7 @@ func main() {
   brightness := brightnessMatrix(img)
 
   // Calculate the width-height ratio of our image
-  whR := float64(len(brightness[0]))/float64(len(brightness))
+  whR := float64(len((*brightness)[0]))/float64(len(*brightness))
 
   cwhR := float64(1)
   if f, err := os.OpenFile("/dev/tty", unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NDELAY|unix.O_RDWR, 0666); err == nil {
@@ -55,14 +54,17 @@ func main() {
   twhR := whR * cwhR
 
   // Average the cells in blocks (specified in "width" by the user)
-  averagedBlocks := blockedMatrix(brightness, width, twhR)
+  averagedBlocks := *blockedMatrix(brightness, width, twhR)
 
-  file, err := os.Create(out)
-  defer file.Close()
+  out_file, err := os.Create(out)
+  bfFile := BfFile{out_file}
+  defer bfFile.close()
   if err != nil {
     fmt.Println("Error opening file")
     panic(err)
   }
+
+  // Add a character to our bf file for every block
   for y, row := range averagedBlocks{
     prevChar := rune(0)
     count := 0
@@ -73,17 +75,25 @@ func main() {
       curChar := characters[invCharIndex]
       if prevChar != curChar || x == len(row)-1 {
         // Different character (we add our brainfuck code)
-        addBFChars(prevChar, count, file)
+        bfFile.addChars(prevChar, count)
         prevChar = curChar
         count = 0
       }
       count++
     }
-    addBFNewLine(file)
+    bfFile.addNewLine()
   }
 }
 
-func addBFChars(char rune, count int, file *os.File){
+type BfFile struct{
+  file *os.File
+}
+
+func (bfFile *BfFile) close() {
+  bfFile.file.Close()
+}
+
+func (bfFile *BfFile) addChars(char rune, count int){
   ascii := int(char)
   addition := ""
   for _ = range ascii{
@@ -93,23 +103,32 @@ func addBFChars(char rune, count int, file *os.File){
     addition += "."
   }
   addition +=">\n"
-  file.Write([]byte(addition))
+  bfFile.file.Write([]byte(addition))
 }
 
-func addBFNewLine(file *os.File){
+func (bfFile *BfFile) addNewLine(){
   addition := ""
   for _ = range 10 {
     addition += "+"
   }
   addition += ".>\n"
-  file.Write([]byte(addition))
+  bfFile.file.Write([]byte(addition))
 }
 
-func brightnessMatrix(img image.Image) [][]int {
-  matrix := make([][]int, img.Bounds().Max.Y)
-  for i := range matrix {
-    matrix[i] = make([]int, img.Bounds().Max.X)
+
+type Matrix [][]int
+func newMatrix(width int, height int) *Matrix {
+  var m Matrix
+  m = make([][]int, height)
+  for i := range m {
+    m[i] = make([]int, width)
   }
+  return &m
+}
+
+func brightnessMatrix(img image.Image) *Matrix {
+  matrix := *newMatrix(img.Bounds().Max.X, img.Bounds().Max.Y)
+
   for y := range img.Bounds().Max.Y {
     for x := range img.Bounds().Max.X {
       pixel := img.At(x, y) 
@@ -118,10 +137,12 @@ func brightnessMatrix(img image.Image) [][]int {
       matrix[y][x] = int(brightness)
     }
   }
-  return matrix
+  return &matrix
 }
 
-func blockedMatrix(matrix [][]int, blocksAmountW int, whR float64) [][]int {
+func blockedMatrix(matrixPtr *Matrix, blocksAmountW int, whR float64) *Matrix {
+  matrix := *matrixPtr
+
   blockWidth := len(matrix[0]) / blocksAmountW
   blocksAmountH := int(float64(blocksAmountW)/whR)
   blockHeight := len(matrix)/blocksAmountH // first look at the blockheight for a strict emulation of the given aspect ratio
@@ -129,10 +150,9 @@ func blockedMatrix(matrix [][]int, blocksAmountW int, whR float64) [][]int {
 
   fmt.Printf("blockWidth: %d, blocksAmountW: %d, width: %d\n", blockWidth, blocksAmountW, len(matrix[0]))
   fmt.Printf("blockHeight: %d, blocksAmountH: %d, height: %d\n", blockHeight, blocksAmountH, len(matrix))
-  blockedMatrix := make([][]int, blocksAmountH)
-  for i := range len(blockedMatrix) {
-    blockedMatrix[i] = make([]int, blocksAmountW)
-  }
+
+  blockedMatrix := *newMatrix(blocksAmountW, blocksAmountH)
+
   for i := range blocksAmountH {
     blockBottom := (i+1)*blockHeight
     blockTop := i*blockHeight 
@@ -149,5 +169,5 @@ func blockedMatrix(matrix [][]int, blocksAmountW int, whR float64) [][]int {
       blockedMatrix[i][j] = average
     }
   }
-  return blockedMatrix
+  return &blockedMatrix
 }
